@@ -10,15 +10,19 @@ import requests
 from bs4 import BeautifulSoup
 import multiprocessing as mp
 
-from production_setting import sub_process_bar, tw_path_setting, tw_price_df_loading, display_setting
+from production_setting import sub_process_bar, tw_path_setting, tw_price_df_loading
 
 '''
-若投信長期未買進，買進的第一根可以跟
-有些標的有族群性，就會不適用
-使用證交所資料，爬蟲每次間隔>10sec, 被鎖IP要20mins
+Observe the actions of Investment Trust companies. If they have no action for a long time and suddenly start buying a stock, we will folloow and buy the stock.
 '''
 
-display_setting()
+
+def sub_process_bar(j, total_step):
+    str_ = '>' * (50 * j // total_step) + ' ' * (50 - 50 * j // total_step)
+    sys.stdout.write('\r[' + str_ + '][%s%%]' % (round(100 * j / total_step, 2)))
+    sys.stdout.flush()
+    j += 1
+    return j
 
 
 def itbs_exp_dir_setting():
@@ -40,10 +44,6 @@ def crawling_goodinfo(ticker='8255'):
     soup = BeautifulSoup(resp.text, 'html.parser')
     time.sleep(random.randrange(1, 3))
     table = soup.find(id="divK_ChartDetail")
-    # table = soup.find(id="divBuySaleDetailData")
-    # for i in range(1, len(table.text)):
-    #     if (table.text[i-11:i] == '賣出(張)買賣超(張)') and (table.text[i+3] == '/'):
-    #         break
 
     for i in range(1, len(table.text)):
         if table.text[i - 8: i + 1] == '餘額 增減 餘額 ':
@@ -688,7 +688,3 @@ def plotly_condition_exp(signal_item, summary_dict, x_item='signal_date_intra_pc
 if __name__ == '__main__':
     itbs = ITBS()
     itbs.daily_main()
-
-# other:
-# 1. 昨日有訊號的股票之後續(
-# 2. mktcap爬蟲
