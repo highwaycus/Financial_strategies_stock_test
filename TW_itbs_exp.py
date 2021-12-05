@@ -44,6 +44,10 @@ def crawling_goodinfo(ticker='8255'):
     soup = BeautifulSoup(resp.text, 'html.parser')
     time.sleep(random.randrange(1, 3))
     table = soup.find(id="divK_ChartDetail")
+    # table = soup.find(id="divBuySaleDetailData")
+    # for i in range(1, len(table.text)):
+    #     if (table.text[i-11:i] == '賣出(張)買賣超(張)') and (table.text[i+3] == '/'):
+    #         break
 
     for i in range(1, len(table.text)):
         if table.text[i - 8: i + 1] == '餘額 增減 餘額 ':
@@ -163,6 +167,7 @@ class ITBS:
         else:
             start = datetime.datetime.strptime(str(self.start), '%Y%m%d')
         today = datetime.datetime.today()
+        today = datetime.datetime.combine(datetime.datetime.today(), datetime.datetime.min.time())
         date_datetime = start
 
         delta = today - date_datetime
@@ -171,7 +176,7 @@ class ITBS:
             print('No need to update ITBS')
             return
         update_date_list = []
-        while date_datetime <= today:
+        while date_datetime <= datetime.datetime.combine(today, datetime.datetime.min.time()):
             sleep_t = random.randrange(15, 18)
             time.sleep(sleep_t)
             date = int(date_datetime.strftime('%Y%m%d'))
@@ -192,6 +197,7 @@ class ITBS:
                     body_text = soup.body.p.text
             except:
                 soup = BeautifulSoup(resp.text, 'html.parser')
+                body_text = soup.text
             record = []
             if True:
                 if '查詢日期小於93年12月17日，請重新查詢' in body_text:
@@ -618,25 +624,10 @@ class ITBS:
         self.mode = 'backtest'
         self.all_record = self.data_loading()
         self.itntbs_record_transform(save=True)
-        # self.data_process_with_price()
-        # self.current_signal()
         self.quick_see_if_signal_today(today=today)
 
 
 ########################################################################################################################
-def regression_exp(summary_dict, x_item, y_item):
-    x, y = [], []
-    for yr in summary_dict:
-        for ticker in summary_dict[yr]:
-            if summary_dict[yr][ticker]['mktcap'][0] > 100:
-                continue
-            # if summary_dict[yr][ticker]['nextopen_todayclose'][0] > 1.03:
-            #     continue
-            for i in range(len(summary_dict[yr][ticker]['signal_date'])):
-                x.append(summary_dict[yr][ticker][x_item][i])
-                y.append(summary_dict[yr][ticker][y_item][i])
-
-
 def plotly_condition_exp(signal_item, summary_dict, x_item='signal_date_intra_pct', y_item='return_h3'):
     import plotly.graph_objs as go
     from plotly.offline import plot
@@ -688,3 +679,4 @@ def plotly_condition_exp(signal_item, summary_dict, x_item='signal_date_intra_pc
 if __name__ == '__main__':
     itbs = ITBS()
     itbs.daily_main()
+
