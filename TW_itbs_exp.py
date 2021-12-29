@@ -5,24 +5,11 @@ import datetime
 import time
 import random
 import requests
-# from selenium import webdriver
-# from selenium.webdriver.firefox.options import Options
 from bs4 import BeautifulSoup
 import multiprocessing as mp
+from production_setting import sub_process_bar, tw_path_setting, tw_price_df_loading, display_setting
 
-from production_setting import sub_process_bar, tw_path_setting, tw_price_df_loading
-
-'''
-Observe the actions of Investment Trust companies. If they have no action for a long time and suddenly start buying a stock, we will folloow and buy the stock.
-'''
-
-
-def sub_process_bar(j, total_step):
-    str_ = '>' * (50 * j // total_step) + ' ' * (50 - 50 * j // total_step)
-    sys.stdout.write('\r[' + str_ + '][%s%%]' % (round(100 * j / total_step, 2)))
-    sys.stdout.flush()
-    j += 1
-    return j
+display_setting()
 
 
 def itbs_exp_dir_setting():
@@ -346,7 +333,7 @@ class ITBS:
         np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',self.trans_record,
                 allow_pickle=True)
 
-    def it_bet_bs_job(self , input_):
+    def it_bet_bs_job(self, input_):
         ticker, price_path, tmp_df = input_[0], input_[1], input_[2]
         if not len(tmp_df):
             print('{} has no data in self.trans_record'.format(ticker))
@@ -359,8 +346,8 @@ class ITBS:
             else:
                 tmp_df = ticker_price_loading_combine(ticker, price_path, tmp_df, self.h_list)
         if self.mode == 'exp':
-            if max(df) == self.bench_last_date:
-                if self.signal_item in df[max(df)]:
+            if max(tmp_df) == self.bench_last_date:
+                if self.signal_item in tmp_df[max(tmp_df)]:
                     return
         df = pd.DataFrame(tmp_df).transpose().sort_index()
         df['accumulation_{}days_net'.format(self.silence_days)] = df['買賣超股數'].rolling(window=self.silence_days).sum().shift(1)
@@ -538,36 +525,6 @@ class ITBS:
                 print('\n', t, defa[t])
         return
 
-    def quick_see_if_signal_today(self, today=None):
-        """
-        :param today: int, YYYYmmdd
-        :return:
-        """
-        if today is None:
-            today = max(self.all_record)
-        print('\nToday = ', today)
-        date_list = sorted(list(self.all_record.keys()))
-        today_idx = date_list.index(today)
-        silence_start = date_list[today_idx - self.silence_days]
-        for ticker in self.trans_record:
-            if today in self.trans_record[ticker]:
-                if self.trans_record[ticker][today]['買賣超股數'] >= self.min_p:
-                    during_date = [d for d in self.trans_record[ticker] if (d >= silence_start) and (d < today)]
-                    sum_p = 0
-                    for d in during_date:
-                        # if self.trans_record[ticker][d]['買賣超股數'] > 0:
-                            # sum_p += self.trans_record[ticker][d]['買賣超股數']
-                        sum_p += abs(self.trans_record[ticker][d]['買賣超股數'])
-                    if sum_p <= self.max_p:
-                        try:
-                            price_data = tw_price_df_loading(data_path=tw_path_setting(collapse='daily')[0], ticker=ticker,
-                                                             collapse='daily')
-                            mktcap = price_data.iloc[-1]['總市值(億)']
-                        except:
-                            mktcap = np.NAN
-                        print(today, ticker, '總市值(億)={}'.format(mktcap))
-        print('\n====================================================')
-
     def check_ticker_it_record(self, ticker='8255'):
         if os.path.isfile(self.exp_save_dir + self.ticker_itbs_format.format(ticker)):
             df = np.load(self.exp_save_dir + self.ticker_itbs_format.format(ticker), allow_pickle=True).item()
@@ -612,13 +569,34 @@ class ITBS:
         self.all_record = self.data_loading()
         self.trans_record = self.itntbs_record_transform(save=True)
         self.supplement_from_goodinfo()
-        # 需下載日收盤還原報表
-        # summary_dict, signal_item = data_process_with_price(trans_record=trans_record, silence_days=25, max_p=2000, min_p=100000, mode='backtest')
         self.data_process_with_price()
         self.summary_dict = self.create_summary_dict()
         self.current_signal()
         self.summary_analysis()
         self.current_signal()
+
+    def quick_see_if_signal_today(self, today=None):
+        """
+        :param today: int, YYYYmmdd
+        :return:
+        """
+        if today is None:
+            today = max(self.all_record)
+        print('\nToday = ', today)
+        date_list = sorted(list(self.all_record.keys()))
+        today_idx = date_list.index(today)
+        silence_start = date_list[today_idx - self.silence_days]
+        for ticker in self.trans_record:
+            if today in self.trans_record[ticker]:
+                if self.trans_record[ticker][today]['買賣超股數'] >= self.min_p:
+                    during_date = [d for d in self.trans_record[ticker] if (d >= silence_start) and (d < today)]
+                    sum_p = 0
+                    for d in during_date:
+                        sum_p += abs(self.trans_record[ticker][d]['買賣超股數'])
+                    if sum_p <= self.max_p:
+                        mktcap = get_mktcap_yahoo(stock=ticker)
+                        print(today, ticker, '總市值(億)={}'.format(mktcap))
+        print('\n====================================================')
 
     def daily_main(self, today=None):
         self.mode = 'backtest'
@@ -627,50 +605,19 @@ class ITBS:
         self.quick_see_if_signal_today(today=today)
 
 
-########################################################################################################################
-def plotly_condition_exp(signal_item, summary_dict, x_item='signal_date_intra_pct', y_item='return_h3'):
-    import plotly.graph_objs as go
-    from plotly.offline import plot
-    x, y, text_ = [], [], []
-    for yr in summary_dict:
-        for ticker in summary_dict[yr]:
-            if summary_dict[yr][ticker]['mktcap'][0] > 100:
-                continue
-            # if summary_dict[yr][ticker]['nextopen_todayclose'][0] > 1.03:
-            #     continue
-            for i in range(len(summary_dict[yr][ticker]['signal_date'])):
-                x.append(summary_dict[yr][ticker][x_item][i])
-                y.append(summary_dict[yr][ticker][y_item][i])
-                text_.append('{}, {}'.format(ticker, summary_dict[yr][ticker]['signal_date'][i]))
-    data = go.Scatter(
-        x=x,
-        y=y,
-        name='{}-{}'.format(x_item, y_item),
-        mode='markers',
-        text=text_
-    )
-    shape_list = []
-    layout = go.Layout(
-        title=' TE-ITBS:{} | {}-{}'.format(signal_item, x_item, y_item),
-        xaxis=dict(
-            title=x_item
-        ),
-        yaxis=dict(
-            title=y_item
-        ),
-        shapes=shape_list
-    )
-    fig = go.Figure(data=data, layout=layout)
-    auto_open = itbs_exp_dir_setting().startswith('tw_data/')
-    try:
-        plot_url = plot(fig, filename=itbs_exp_dir_setting() + 'TW-ITBS_exp_{}_{}-{}.html'.format(signal_item, x_item,
-                                                                                                  y_item),
-                        auto_open=auto_open)
-    except:
-        from plotly.offline import plot
-        plot_url = plot(fig, filename=itbs_exp_dir_setting() + 'TW-ITBS_exp_{}_{}-{}.html'.format(signal_item, x_item,
-                                                                                                  y_item),
-                        auto_open=auto_open)
+############################################
+def get_mktcap_yahoo(stock):
+    url = 'https://tw.stock.yahoo.com/quote/{}.TW/profile'.format(stock)
+    resp = requests.get(url, headers={
+        'User-agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like gecko) Chrome/63.0.3239.132 Safari/537.36'})
+    resp.encoding = 'utf-8'
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    mkt_num = ''
+    mkt_num_index = soup.text.index('市值 (百萬)') + 7
+    while soup.text[mkt_num_index] != '市':
+        mkt_num += soup.text[mkt_num_index]
+        mkt_num_index += 1
+    return float(mkt_num.replace(',', '')) / 100
 
 
 ########################################################################################################################
