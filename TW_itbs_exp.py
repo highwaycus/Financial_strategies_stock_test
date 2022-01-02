@@ -21,9 +21,7 @@ def itbs_exp_dir_setting():
 
 
 def crawling_goodinfo(ticker='8255'):
-    # https://bradnopitt.blogspot.com/2018/02/pandas.html
     url = 'https://goodinfo.tw/StockInfo/ShowK_Chart.asp?STOCK_ID={}&CHT_CAT2=DATE'.format(ticker)
-    # url='https://goodinfo.tw/StockInfo/ShowBuySaleChart.asp?STOCK_ID=2104&CHT_CAT=DATE'
     resp = requests.get(url, headers={
         'User-agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like gecko) Chrome/63.0.3239.132 Safari/537.36'})
     time.sleep(random.randrange(1, 4))
@@ -31,11 +29,6 @@ def crawling_goodinfo(ticker='8255'):
     soup = BeautifulSoup(resp.text, 'html.parser')
     time.sleep(random.randrange(1, 3))
     table = soup.find(id="divK_ChartDetail")
-    # table = soup.find(id="divBuySaleDetailData")
-    # for i in range(1, len(table.text)):
-    #     if (table.text[i-11:i] == '賣出(張)買賣超(張)') and (table.text[i+3] == '/'):
-    #         break
-
     for i in range(1, len(table.text)):
         if table.text[i - 8: i + 1] == '餘額 增減 餘額 ':
             break
@@ -169,13 +162,7 @@ class ITBS:
             date = int(date_datetime.strftime('%Y%m%d'))
             url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
             resp = requests.get(url)
-            # try:
-            #     resp = requests.get(url)
-            # except:
-            #     print('Connect Error! Take a rest for 25 mins...')
-            #         np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy', self.all_record,
-            #                 allow_pickle=True)
-            #     time.sleep(1500)
+            
             try:
                 soup = BeautifulSoup(resp.text, 'lxml')
                 if soup.body is None:
@@ -368,14 +355,14 @@ class ITBS:
     def data_process_with_price(self, mp_mode=False):
         """
         :paramself.trans_record:
-        :param silence_days: 多少天投信未有動作
-        :param max_p: 可容許"沉默時段"交易數
-        :param min_p: 訊號形成最少股數
+        :param silence_days: The period that ITBS has no action, "silence period"
+        :param max_p: bearable maximum volume during "silence period"
+        :param min_p: minimum volume needed to form a signal
         :param mode: 'exp' for use current data; 'update' for add new data; 'backtest' for re-processing the whole data
         :return:
         """
         '''
-        總市值 < 100億, 也就是中小型股，才列入訊號
+        if the company's marketcap < 10000000000, we count on it
         '''
         if self.trans_record is None:
             self.trans_record = np.load(
