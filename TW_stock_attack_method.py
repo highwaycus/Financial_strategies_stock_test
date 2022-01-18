@@ -10,7 +10,7 @@ import time
 from production_setting import tw_path_setting, sub_process_bar
 
 
-# Right-Angle Attakc
+# Right-Angle Attack
 # condition: close price stand on all the avg line.
 # return: the open price one day after the condition is confirrmed.
 
