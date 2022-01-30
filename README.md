@@ -7,7 +7,7 @@ The documents show how I transform some ideas into algorithmic projects and appl
 #### Idea
 &emsp;Document:*TW_stock_attack_method.py*
 
-&emsp;##### Right-Angle Attack Method: 
+&emsp; **Right-Angle Attack Method: **
 
 &emsp;&emsp;when all the rolling-window mwan price lines are going up and rank in order (ex: 3-days-mean price > 5-days-mean price), 
 
