@@ -6,6 +6,7 @@ The documents show how I transform some ideas into algorithmic projects and appl
 
 #### Idea
 &emsp;**Document:**
+
 &emsp;&emsp;*TW_stock_attack_method.py*
 
 &emsp;**Right-Angle Attack Method:**
