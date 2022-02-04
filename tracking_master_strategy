@@ -1,0 +1,100 @@
+'''
+1. Trace a master investor's strategy pn internet
+2. backtest for his/her strategy (in progress)
+'''
+import requests
+from bs4 import BeautifulSoup
+
+
+def request_setting(url):
+    resp = requests.get(url, headers={
+        'User-agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like gecko) Chrome/63.0.3239.132 Safari/537.36'})
+    resp.encoding = 'utf-8'
+    return resp
+
+
+def page_level_search(url, investor):
+    resp = request_setting(url)
+
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    find_table = soup.find(class_='ed-container').find(id='ed-mid').find(id='aspnetForm').find('table',
+                                                                                               id='tblMessagesAsp')
+    tt = find_table.find_all('tr')
+    res = []
+    for line in tt:
+        if line.findAll('td'):
+            if investor in line.findAll('td')[1].text:
+                sub_url = []
+                for c in line.find_all('a', href=True):
+                    if c.text:
+                        sub_url.append(c['href'])
+                sub_url = sub_url[0]
+                article_title = line.find_all('a', href=True)[0].text.replace('\n', '').replace('\t', '')
+                res.append((article_title, sub_url))
+    return res
+
+
+def get_latest_page_main(url_head, url_tail=''):
+    # Start from Board website
+    board_url = url_head + url_tail
+    board_name = 'Saul’s Investing Discussions'
+    resp = request_setting(board_url)
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    board_list = soup.find(class_='ed-container').find(id='ed-mid').find('table', id='tblBoardsAsp')
+    bt=board_list.find_all('tr')
+    for b_line in bt:
+        if b_line.findAll('td'):
+            if board_name in b_line.findAll('td')[0].text:
+                discuss_url = []
+                for c in b_line.find_all('a', href=True):
+                    if c.text:
+                        discuss_url.append(c['href'])
+                discuss_url = discuss_url[0]
+                break
+    return discuss_url
+
+
+def get_prev_page_link(main_url):
+    # main_url = '{}{}'.format(url_head, discuss_url.replace('/', ''))
+    resp = request_setting(main_url)
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    # find "prev" botton
+
+    prev_button = soup.find(class_='ed-container').find(id='ed-mid').find(id='aspnetForm').find(
+        class_='messagesControls').find(class_='prevNext')
+    page_link = prev_button.find_all('a', href=True)
+    if len(page_link) == 2:
+        prev_link_sub = page_link[0]['href']
+    elif len(page_link) == 1:
+        if page_link[0].text == 'Next':
+            # First page
+            return -1
+        else:
+            prev_link_sub = page_link[0]['href']
+    else:
+        return None
+    return prev_link_sub
+
+
+def main(investor, url_head):
+    discussion_page = url_head[:-1] + get_latest_page_main(url_head)
+    prev_exist = True
+    res = []
+    while prev_exist:
+        prev_link_sub = get_prev_page_link(discussion_page)
+        if prev_link_sub == -1:
+            print('\n Reach the first page')
+            prev_exist = False
+        else:
+            prev_page = url_head[:-1] + prev_link_sub
+            res += page_level_search(discussion_page, investor)
+            discussion_page = prev_page
+            
+            
+###################################################################################           
+if __name__ == '__main__':
+    print('Enter Investor to follow:')
+    investor = input()
+    print('Enter Forum url:')
+    url_head = input()
+    main(investor, url_head)
