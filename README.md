@@ -9,7 +9,7 @@ The documents show how I transform some ideas into algorithmic projects and appl
 
 &emsp;&emsp;*TW_stock_attack_method.py*
 
-&emsp;&emsp;**Right-Angle Attack Method:**
+&emsp;&emsp;&emsp;**Right-Angle Attack Method:**
 
 &emsp;&emsp;&emsp;When all the rolling-window mwan price lines are going up and rank in order (ex: 3-days-mean price > 5-days-mean price), it is a signal to buy the stock.
 
