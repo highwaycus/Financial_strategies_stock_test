@@ -165,6 +165,36 @@ def extract_portfolio_info_main(res, url_head):
     return portfolio_record
 
 
+def crawling_eod_nasdaq():
+    import string
+    eod_url = 'https://eoddata.com/stocklist/NYSE/{}.htm'
+    name_list = {}  # {company: symbol}
+    for alphabet in string.ascii_uppercase:
+        respo = requests.get(eod_url.format(alphabet))
+        content = BeautifulSoup(respo.text, 'html.parser')
+        table_a = content.find(class_='quotes').findAll('tr')
+        for i in range(1, len(table_a)):
+            name_list[table_a[i].findAll('td')[1].text] = table_a[i].findAll('td')[0].text
+    print('store {} symbols'.format(len(name_list)))
+
+    nasdaq_url = 'http://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt'
+    resp = requests.get(nasdaq_url).text
+    i = 96
+    line = ''
+    while i < len(resp):
+        if resp[i] != '\n':
+            line += resp[i]
+        else:
+            # print(line)
+            company = line.split('|')[1].split('-')[0]
+            if company not in name_list:
+                name_list[company] = line.split('|')[0]
+            line = ''
+        i += 1
+    np.save('data/NYSE_symbol.npy', name_list, allow_pickle=True)
+    return name_list
+
+
 ########################################
 def main(investor, url_head, first_page_tail='', article_keywords='', board_name=''):
     resu = get_portfolio_article_url_main(investor, url_head, first_page_tail, article_keywords, board_name)
