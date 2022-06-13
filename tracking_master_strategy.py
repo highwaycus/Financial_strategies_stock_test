@@ -133,7 +133,21 @@ def extract_portfolio_ratio(port_link):
 def get_portfolio_article_url_main(investor, url_head, first_page_tail='', article_keywords='', board_name=''):
     discussion_page = url_head[:-1] + get_latest_page_main(url_head, first_page_tail, board_name)
     prev_exist = True
-    res = []
+    load_path = 'data/'
+    if os.path.isfile('{}res-{}_strategy.npy'.format(load_path, investor)):
+        res = np.load('{}res-{}_strategy.npy'.format(load_path, investor), allow_pickle=True).tolist()
+    else:
+        res = []
+    max_s = datetime.datetime.strptime('19000101', '%Y%m%d')
+    for pos in res:
+        try:
+            s = ' '.join(pos[0].split(' ')[-2:])
+            s2 = datetime.datetime.strptime(s, '%b %Y')
+            if s2 > max_s:
+                max_s = s2
+        except:
+            continue
+    update_start = None
     while prev_exist:
         prev_link_sub = get_prev_page_link(discussion_page)
         if prev_link_sub == -1:
@@ -148,7 +162,31 @@ def get_portfolio_article_url_main(investor, url_head, first_page_tail='', artic
                         if not cont[0].startswith('Re'):
                             res.append(cont)
                             print(cont)
+                            try:
+                                s = ' '.join([cont[0].split(' ')[-2][:3], cont[0].split(' ')[-1]])
+                                s2 = datetime.datetime.strptime(s, '%b %Y')
+                                if s2 < max_s:
+                                    prev_exist = False
+                                else:
+                                    update_start = s2
+                            except:
+                                if (cont[0].split(' ')[-3:-1] == ['End', 'of']) and (cont[0].split(' ')[-1][:2] == '20'):
+                                    s2 = datetime.datetime.strptime('Dec {}'.format(cont[0].split(' ')[-1]), '%b %Y')
+                                    if s2 < max_s:
+                                        prev_exist = False
+                                    else:
+                                        update_start = s2
+                                else:
+                                    pass
             discussion_page = prev_page
+    del_id, use_url = [], []
+    for i in range(len(res)):
+        if res[i][1] in use_url:
+            del_id.append(i)
+        else:
+            use_url.append(res[i][1])
+    res = [res[d] for d in range(len(res)) if d not in del_id]
+    np.save('{}res-{}_strategy.npy'.format(load_path, investor), res, allow_pickle=True)
     return res
 
 
