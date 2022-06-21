@@ -3,7 +3,7 @@
 2. backtest for his/her strategy (in progress)
 '''
 import requests
-import sys
+import sys 
 import re
 import datetime
 from bs4 import BeautifulSoup
