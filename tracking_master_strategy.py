@@ -93,62 +93,103 @@ def get_port_link(url_head, port_):
     return '{}{}{}{}'.format(url_head, port_[0].lower().replace(' ', '-'), '-', port_[1].split('mid=')[1].split('&sort')[0] + '.aspx?sort=postdate')
 
 
-def extract_portfolio_ratio(port_link):
-    """
-    output:
-    : position_dict: {ticker: ratio}
-    : post_date: str, 'YYYYmmdd'
-    """
-    resp = request_setting(port_link)
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    message_main = soup.find(id='fcDefault').find(class_='ed-container').find(id='ed-mid').find(id='pbcontainer').find(class_='messageLayout')
+def extract_post_date_from_post(message_main):
+    message_main2 = message_main.find(class_='msgDate navGroup2')
+    date_1 = message_main2.text.replace('\t', '').replace('\n', '')[5:].split('/')
+    post_date = '{}/{}/{}'.format(int(date_1[0]), int(date_1[1]), date_1[2][:4])
+    post_date = datetime.datetime.strptime(post_date, '%m/%d/%Y').strftime('%Y%m%d')
+    return post_date
+
+def extract_position_from_post(message_main, fortune_code):
     message_main1 = message_main.find(id='message')
-    position_start = message_main1.text[message_main1.text.index('POSITION SIZE'):]
-    position_start = position_start[position_start.index('. . ') + 4:]
+    if fortune_code not in message_main1.text:
+        return None
+    # position_start = message_main1.text[message_main1.text.index(fortune_code):]
+    # tmp = message_main1.find_all('b', text='POSITION SIZES')
+    pre_list = message_main1.find_all('pre')
+    k = 1
+    while k <= len(pre_list):
+        tmp = message_main1.find_all('pre')[-k].text
+        if tmp.startswith('.'):
+            break
+        k += 1
+    position_start = tmp[1:]
+    # if '. . ' in position_start:
+    #     position_start = position_start[position_start.index('. . ') + 4:]
+    # else:
+    #     index_ = position_start.index('\t\t\t')
+    #     position_start = position_start[:index_].split('. ')[-1] + position_start [index_:]
     position_dict = {}
-    position_text = re.split('%|[\t]*', position_start)
+    position_text = re.split('%|[\t]*', position_start.replace(' ', ''))
     i = 0
     while i < len(position_text):
-        if re.findall('\s|,', position_text[i]):
-            try:
-                float(position_text[i])
-            except:
-                break
+        if ',' in position_text[i]:
+            break
         elif not len(position_text[i]):
             pass
         else:
             try:
                 float(position_text[i])
+                position_dict[position_text[i - 1]] = float(position_text[i]) / 100
             except:
-                position_dict[position_text[i]] = float(position_text[i + 1]) / 100
+                pass
         i += 1
-    message_main2 = message_main.find(class_='msgDate navGroup2')
-    date_1 = message_main2.text.replace('\t', '').replace('\n', '')[5:].split('/')
-    post_date = '{}/{}/{}'.format(int(date_1[0]), int(date_1[1]), date_1[2][:4])
-    post_date = datetime.datetime.strptime(post_date, '%m/%d/%Y').strftime('%Y%m%d')
+    return position_dict
+
+
+def extract_portfolio_ratio(port_link, fortune_code='POSITION SIZES', date_find=True, position_find=True):
+    """
+    output:
+    : position_dict: {ticker: ratio}
+    : post_date: str, 'YYYYmmdd'
+    """
+    # Before (include) 2017, there's no "POSITION" section
+    post_date, position_dict = None, None
+    resp = request_setting(port_link)
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    if soup.find(id='fcDefault') is not None:
+        message_main = soup.find(id='fcDefault').find(class_='ed-container').find(id='ed-mid').find(id='pbcontainer').find(class_='messageLayout')
+        if position_find:
+            position_dict = extract_position_from_post(message_main, fortune_code)
+            if position_dict:
+                if sum(position_dict.values()) < 0.95:
+                    print('sum of ratio = ', sum(position_dict.values()))
+        if date_find:
+            post_date = extract_post_date_from_post(message_main)
     return post_date, position_dict
+
+
+########################################
+# Sort select article by date
+def sort_by_title_date(res):
+    for i in range(len(res)):
+        if len(res[i]) < 3:
+            port_link = get_port_link(url_head, res[i])
+            post_date_, post_portfolio = extract_portfolio_ratio(port_link, date_find=True, position_find=False)
+            res[i].append(post_date_)
+    return sorted(res, key=lambda x: (x[2] is None, x[2]))
 
 
 ########################################
 def get_portfolio_article_url_main(investor, url_head, first_page_tail='', article_keywords='', board_name=''):
     discussion_page = url_head[:-1] + get_latest_page_main(url_head, first_page_tail, board_name)
     prev_exist = True
-    load_path = 'data/'
+    load_path = 'tw_data/'
     if os.path.isfile('{}res-{}_strategy.npy'.format(load_path, investor)):
         res = np.load('{}res-{}_strategy.npy'.format(load_path, investor), allow_pickle=True).tolist()
     else:
         res = []
-    max_s = datetime.datetime.strptime('19000101', '%Y%m%d')
-    for pos in res:
-        try:
-            s = ' '.join(pos[0].split(' ')[-2:])
-            s2 = datetime.datetime.strptime(s, '%b %Y')
-            if s2 > max_s:
-                max_s = s2
-        except:
-            continue
-    update_start = None
-    while prev_exist:
+        max_s ='20000101'
+    if res:
+        res = sort_by_title_date(res)
+        j = -1
+        while res[j][2] is None:
+            j -= 1
+        max_s = res[j][2]
+
+    count_page = 0
+    while prev_exist or not count_page:
+        # discussion page == latest page
         prev_link_sub = get_prev_page_link(discussion_page)
         if prev_link_sub == -1:
             print('\n Reach the first page')
@@ -160,25 +201,19 @@ def get_portfolio_article_url_main(investor, url_head, first_page_tail='', artic
                 for cont in get_article:
                     if re.findall(article_keywords, cont[0]):
                         if not cont[0].startswith('Re'):
-                            res.append(cont)
+                            port_link = get_port_link(url_head, cont)
+                            post_date_, post_portfolio = extract_portfolio_ratio(port_link, date_find=True,
+                                                                                 position_find=False)
+                            if list(cont) + [post_date_] not in res:
+                                res.append(list(cont) + [post_date_])
+                            elif post_date_ <= max_s:
+                                print('End of Searching: {}'.format(post_date_))
+                                prev_exist = False
+                                break
                             print(cont)
-                            try:
-                                s = ' '.join([cont[0].split(' ')[-2][:3], cont[0].split(' ')[-1]])
-                                s2 = datetime.datetime.strptime(s, '%b %Y')
-                                if s2 < max_s:
-                                    prev_exist = False
-                                else:
-                                    update_start = s2
-                            except:
-                                if (cont[0].split(' ')[-3:-1] == ['End', 'of']) and (cont[0].split(' ')[-1][:2] == '20'):
-                                    s2 = datetime.datetime.strptime('Dec {}'.format(cont[0].split(' ')[-1]), '%b %Y')
-                                    if s2 < max_s:
-                                        prev_exist = False
-                                    else:
-                                        update_start = s2
-                                else:
-                                    pass
             discussion_page = prev_page
+        count_page += 1
+        print('Page Count: {}'.format(count_page))
     del_id, use_url = [], []
     for i in range(len(res)):
         if res[i][1] in use_url:
@@ -190,16 +225,83 @@ def get_portfolio_article_url_main(investor, url_head, first_page_tail='', artic
     return res
 
 
-def extract_portfolio_info_main(res, url_head):
+def extract_portfolio_info_main(res=None, url_head=''):
+    """
+    {Date: {'title': port_[0], 'link': port_link, 'portfolio': post_portfolio})
+    """
+    #######################################
+    # Obtain Table of NYSE ticker symbol and company name
+    try:
+        symbol_dict = np.load('data/NYSE_symbol.npy', allow_pickle=True).item()
+    except:
+        symbol_dict = crawling_eod_nasdaq()
+    #######################################
+
+    if res is None:
+        res = np.load('tw_data/res-{}_strategy.npy'.format(investor), allow_pickle=True).tolist()
     portfolio_record = {}
-    # {Date:{ticker: ratio}}
+    # j, total_step = 0, len(res)
     for port_ in res:
-        print('Record for: ', port_[0].split('end of ')[1])
+        print('Record for: ', port_[0].split('of ')[1])
         # see the true post date
         port_link = get_port_link(url_head, port_)
         post_date_, post_portfolio = extract_portfolio_ratio(port_link)
+        ori_key = list(post_portfolio.keys()).copy()
+        for k in ori_key:
+            flag = 0
+            if k == 'Square':
+                new_key = 'SQ'
+            elif k == 'Sentinel':
+                new_key = 'S'
+            elif k == 'Crowdstrike':
+                new_key = 'CRWD'
+            else:
+                new_key = [nk for nk in symbol_dict if k in nk]
+                if not new_key:
+                    k_tmp = ' '.join(re.findall('[A-Z][^A-Z]*', k))
+                    new_key = [nk for nk in symbol_dict if k_tmp in nk]
+                    if not new_key:
+                        k_tmp = k.lower()
+                        new_key = [nk for nk in symbol_dict if k_tmp in nk]
+                        if not new_key:
+                            if (len(k) <= 6) and (k.isupper()):
+                                if k in symbol_dict.values():
+                                    new_key = k
+                                    flag = 1
+                                else:
+                                    print('cannot find {} in dict'.format(k))
+                            else:
+                                print('cannot find {} in dict'.format(k))
+                if not flag:
+                    if len(new_key) > 1:
+                        print('bbb: {}'.format(k))
+                        break
+                    elif len(new_key) == 1:
+                        new_key = symbol_dict[new_key[0]]
+                    else:
+                        print('cannot find {}'.format(k))
+                        break
+            post_portfolio[new_key] = post_portfolio.pop(k)
         if post_portfolio:
-            portfolio_record[post_date_] = post_portfolio
+            total_v = sum([i for i in post_portfolio.values()])
+            if total_v > 1:
+                adj_post_portfolio = {t: post_portfolio[t] / total_v for t in post_portfolio}
+            else:
+                adj_post_portfolio = post_portfolio
+                adj_post_portfolio['cash'] = 1 - total_v
+            portfolio_record[post_date_] = {'title': port_[0], 'link': port_link, 'portfolio': adj_post_portfolio}
+            # before 20181231, no "POSITION SIZE" --> not the priority
+            # mapping full name --> symbol
+            # https: // en.wikipedia.org / wiki / List_of_S % 26P_500_companies
+            '''
+            20220221 22:30 note:
+            少數還是有bbb的情形，但大都快ok了
+            接下來可以先進historical price的部分
+            '''
+
+        else:
+            print('No message found:', port_[0])
+        # j = sub_process_bar(j, total_step)
     return portfolio_record
 
 
