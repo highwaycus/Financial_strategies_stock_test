@@ -24,6 +24,45 @@ def request_setting(url):
     return resp
 
 
+##############################################
+def crawling_eod_nasdaq():
+    import string
+    eod_url = 'https://eoddata.com/stocklist/NYSE/{}.htm'
+    name_list = {}  # {company: symbol}
+    for alphabet in string.ascii_uppercase:
+        respo = requests.get(eod_url.format(alphabet))
+        content = BeautifulSoup(respo.text, 'html.parser')
+        table_a = content.find(class_='quotes').findAll('tr')
+        for i in range(1, len(table_a)):
+            name_list[table_a[i].findAll('td')[1].text] = table_a[i].findAll('td')[0].text
+    print('store {} symbols'.format(len(name_list)))
+
+    nasdaq_url = 'http://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt'
+    resp = requests.get(nasdaq_url).text
+    i = 96
+    line = ''
+    while i < len(resp):
+        if resp[i] != '\n':
+            line += resp[i]
+        else:
+            # print(line)
+            company = line.split('|')[1].split('-')[0]
+            if company not in name_list:
+                name_list[company] = line.split('|')[0]
+            line = ''
+        i += 1
+    np.save('data/NYSE_symbol.npy', name_list, allow_pickle=True)
+    return name_list
+
+
+def csv_to_npy(data_name):
+    df = pd.read_csv(data_name)
+    df['new_Name'] = df['Name'].apply(lambda x: x.replace(' Common Stock', '').replace(' Ordinary Shares', '').replace(' Class A', ''))
+    new_dict = {df['new_Name'][j].replace(' Common Stock', ''): df['Symbol'][j] for j in range(len(df))}
+    np.save('data/nasdaq_screener.npy', new_dict, allow_pickle=True)
+
+
+######################################################
 def page_level_search(url, investor):
     resp = request_setting(url)
 
@@ -100,42 +139,34 @@ def extract_post_date_from_post(message_main):
     post_date = datetime.datetime.strptime(post_date, '%m/%d/%Y').strftime('%Y%m%d')
     return post_date
 
-def extract_position_from_post(message_main, fortune_code):
+
+def extract_position_from_post(message_main, fortune_code, fortune_end='STOCK REVIEWS'):
     message_main1 = message_main.find(id='message')
     if fortune_code not in message_main1.text:
         return None
-    # position_start = message_main1.text[message_main1.text.index(fortune_code):]
-    # tmp = message_main1.find_all('b', text='POSITION SIZES')
-    pre_list = message_main1.find_all('pre')
-    k = 1
-    while k <= len(pre_list):
-        tmp = message_main1.find_all('pre')[-k].text
-        if tmp.startswith('.'):
-            break
-        k += 1
-    position_start = tmp[1:]
-    # if '. . ' in position_start:
-    #     position_start = position_start[position_start.index('. . ') + 4:]
-    # else:
-    #     index_ = position_start.index('\t\t\t')
-    #     position_start = position_start[:index_].split('. ')[-1] + position_start [index_:]
     position_dict = {}
-    position_text = re.split('%|[\t]*', position_start.replace(' ', ''))
+    position_start = message_main1.text[message_main1.text.index(fortune_code):]
     i = 0
-    while i < len(position_text):
-        if ',' in position_text[i]:
+    while True:
+        if position_start[i:i+2] == '\t\t':
             break
-        elif not len(position_text[i]):
-            pass
-        else:
-            try:
-                float(position_text[i])
-                position_dict[position_text[i - 1]] = float(position_text[i]) / 100
-            except:
-                pass
         i += 1
+    while i:
+        if position_start[i:i+2] == '. ':
+            break
+        i -= 1
+    i +=2
+    position_end = position_start.index(fortune_end)
+    position_start = position_start[i:position_end]
+    tmp1 = position_start.split('%')
+    tmp1 = [t for t in tmp1 if len(t)]
+    for j in range(len(tmp1)):
+        pos1 = tmp1[j].replace('\t',':')
+        company_j = pos1.split(':')[0]
+        pos_j = pos1.split(':')[-1]
+        position_dict[company_j] = float(pos_j)
     return position_dict
-
+    
 
 def extract_portfolio_ratio(port_link, fortune_code='POSITION SIZES', date_find=True, position_find=True):
     """
@@ -152,6 +183,8 @@ def extract_portfolio_ratio(port_link, fortune_code='POSITION SIZES', date_find=
         if position_find:
             position_dict = extract_position_from_post(message_main, fortune_code)
             if position_dict:
+                if sum(position_dict.values()) > 3:
+                    position_dict = {k: round(v / total, 3) for total in (sum(position_dict.values()),) for k, v in position_dict.items()}
                 if sum(position_dict.values()) < 0.95:
                     print('sum of ratio = ', sum(position_dict.values()))
         if date_find:
@@ -225,28 +258,38 @@ def get_portfolio_article_url_main(investor, url_head, first_page_tail='', artic
     return res
 
 
+#################################################
 def extract_portfolio_info_main(res=None, url_head=''):
     """
     {Date: {'title': port_[0], 'link': port_link, 'portfolio': post_portfolio})
     """
     #######################################
-    # Obtain Table of NYSE ticker symbol and company name
+    # Obtain Table of NASDAQ ticker symbol and company name
+    # try:
+    #     symbol_dict = np.load('data/NYSE_symbol.npy', allow_pickle=True).item()
+    # except:
+    #     symbol_dict = crawling_eod_nasdaq()
     try:
-        symbol_dict = np.load('data/NYSE_symbol.npy', allow_pickle=True).item()
+        symbol_dict = np.load('data/nasdaq_screener.npy', allow_pickle=True).item()
     except:
-        symbol_dict = crawling_eod_nasdaq()
+        symbol_dict = csv_to_npy('data/nasdaq_screener.csv')
     #######################################
 
     if res is None:
         res = np.load('tw_data/res-{}_strategy.npy'.format(investor), allow_pickle=True).tolist()
     portfolio_record = {}
     # j, total_step = 0, len(res)
+    del_list = []
     for port_ in res:
-        print('Record for: ', port_[0].split('of ')[1])
         # see the true post date
         port_link = get_port_link(url_head, port_)
         post_date_, post_portfolio = extract_portfolio_ratio(port_link)
+        if not post_portfolio:
+            del_list.append(port_)
+            continue
+        print('Record for:', port_[2])
         ori_key = list(post_portfolio.keys()).copy()
+
         for k in ori_key:
             flag = 0
             if k == 'Square':
@@ -256,7 +299,7 @@ def extract_portfolio_info_main(res=None, url_head=''):
             elif k == 'Crowdstrike':
                 new_key = 'CRWD'
             else:
-                new_key = [nk for nk in symbol_dict if k in nk]
+                new_key = [nk for nk in symbol_dict if k.lower() in nk.lower()]
                 if not new_key:
                     k_tmp = ' '.join(re.findall('[A-Z][^A-Z]*', k))
                     new_key = [nk for nk in symbol_dict if k_tmp in nk]
@@ -290,49 +333,11 @@ def extract_portfolio_info_main(res=None, url_head=''):
                 adj_post_portfolio = post_portfolio
                 adj_post_portfolio['cash'] = 1 - total_v
             portfolio_record[post_date_] = {'title': port_[0], 'link': port_link, 'portfolio': adj_post_portfolio}
-            # before 20181231, no "POSITION SIZE" --> not the priority
-            # mapping full name --> symbol
-            # https: // en.wikipedia.org / wiki / List_of_S % 26P_500_companies
-            '''
-            20220221 22:30 note:
-            少數還是有bbb的情形，但大都快ok了
-            接下來可以先進historical price的部分
-            '''
 
         else:
             print('No message found:', port_[0])
         # j = sub_process_bar(j, total_step)
     return portfolio_record
-
-
-def crawling_eod_nasdaq():
-    import string
-    eod_url = 'https://eoddata.com/stocklist/NYSE/{}.htm'
-    name_list = {}  # {company: symbol}
-    for alphabet in string.ascii_uppercase:
-        respo = requests.get(eod_url.format(alphabet))
-        content = BeautifulSoup(respo.text, 'html.parser')
-        table_a = content.find(class_='quotes').findAll('tr')
-        for i in range(1, len(table_a)):
-            name_list[table_a[i].findAll('td')[1].text] = table_a[i].findAll('td')[0].text
-    print('store {} symbols'.format(len(name_list)))
-
-    nasdaq_url = 'http://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt'
-    resp = requests.get(nasdaq_url).text
-    i = 96
-    line = ''
-    while i < len(resp):
-        if resp[i] != '\n':
-            line += resp[i]
-        else:
-            # print(line)
-            company = line.split('|')[1].split('-')[0]
-            if company not in name_list:
-                name_list[company] = line.split('|')[0]
-            line = ''
-        i += 1
-    np.save('data/NYSE_symbol.npy', name_list, allow_pickle=True)
-    return name_list
 
 
 ########################################
