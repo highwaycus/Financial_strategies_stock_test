@@ -1,4 +1,4 @@
-### python_stock_test
+### python_stock_test 
 
 The  repository includes some experiemnts toward stock tradings.
 
