@@ -2,11 +2,15 @@
 1. Trace a master investor's strategy pn internet
 2. backtest for his/her strategy (in progress)
 '''
+# Backtest for the strategy " Follow Mr.S"
+import pandas as pd
 import requests
-import sys 
+import sys
 import re
+import os
 import datetime
 from bs4 import BeautifulSoup
+import numpy as np
 
 
 def sub_process_bar(j, total_step):
@@ -156,6 +160,8 @@ def extract_position_from_post(message_main, fortune_code, fortune_end='STOCK RE
             break
         i -= 1
     i +=2
+    if fortune_end not in position_start:
+        fortune_end = 'COMPANY REVIEWS'
     position_end = position_start.index(fortune_end)
     position_start = position_start[i:position_end]
     tmp1 = position_start.split('%')
@@ -164,9 +170,45 @@ def extract_position_from_post(message_main, fortune_code, fortune_end='STOCK RE
         pos1 = tmp1[j].replace('\t',':')
         company_j = pos1.split(':')[0]
         pos_j = pos1.split(':')[-1]
-        position_dict[company_j] = float(pos_j)
+        if len(company_j.replace(' ','')):
+            position_dict[company_j] = float(pos_j)
     return position_dict
-    
+    #
+    #
+    # # tmp = message_main1.find_all('b', text='POSITION SIZES')
+    # pre_list = message_main1.find_all('pre')
+    # k = 1
+    # while k <= len(pre_list):
+    #     tmp = message_main1.find_all('pre')[-k].text
+    #     if tmp.startswith('.'):
+    #         break
+    #     k += 1
+    # position_start = tmp[1:]
+    #
+    # # 目前並沒有從fortune code開始找阿...
+    #
+    # # if '. . ' in position_start:
+    # #     position_start = position_start[position_start.index('. . ') + 4:]
+    # # else:
+    # #     index_ = position_start.index('\t\t\t')
+    # #     position_start = position_start[:index_].split('. ')[-1] + position_start [index_:]
+    # position_dict = {}
+    # position_text = re.split('%|[\t]*', position_start.replace(' ', ''))
+    # i = 0
+    # while i < len(position_text):
+    #     if ',' in position_text[i]:
+    #         break
+    #     elif not len(position_text[i]):
+    #         pass
+    #     else:
+    #         try:
+    #             float(position_text[i])
+    #             position_dict[position_text[i - 1]] = float(position_text[i]) / 100
+    #         except:
+    #             pass
+    #     i += 1
+    # return position_dict
+
 
 def extract_portfolio_ratio(port_link, fortune_code='POSITION SIZES', date_find=True, position_find=True):
     """
@@ -239,7 +281,7 @@ def get_portfolio_article_url_main(investor, url_head, first_page_tail='', artic
                                                                                  position_find=False)
                             if list(cont) + [post_date_] not in res:
                                 res.append(list(cont) + [post_date_])
-                            elif post_date_ <= max_s:
+                            if post_date_ <= max_s:
                                 print('End of Searching: {}'.format(post_date_))
                                 prev_exist = False
                                 break
@@ -265,14 +307,15 @@ def extract_portfolio_info_main(res=None, url_head=''):
     """
     #######################################
     # Obtain Table of NASDAQ ticker symbol and company name
-    # try:
-    #     symbol_dict = np.load('data/NYSE_symbol.npy', allow_pickle=True).item()
-    # except:
-    #     symbol_dict = crawling_eod_nasdaq()
+    try:
+        symbol_dict2 = np.load('data/NYSE_symbol.npy', allow_pickle=True).item()
+    except:
+        symbol_dict2 = crawling_eod_nasdaq()
     try:
         symbol_dict = np.load('data/nasdaq_screener.npy', allow_pickle=True).item()
     except:
         symbol_dict = csv_to_npy('data/nasdaq_screener.csv')
+    symbol_dict.update(symbol_dict2)
     #######################################
 
     if res is None:
@@ -316,10 +359,7 @@ def extract_portfolio_info_main(res=None, url_head=''):
                             else:
                                 print('cannot find {} in dict'.format(k))
                 if not flag:
-                    if len(new_key) > 1:
-                        print('bbb: {}'.format(k))
-                        break
-                    elif len(new_key) == 1:
+                    if len(new_key) >= 1:
                         new_key = symbol_dict[new_key[0]]
                     else:
                         print('cannot find {}'.format(k))
@@ -327,12 +367,27 @@ def extract_portfolio_info_main(res=None, url_head=''):
             post_portfolio[new_key] = post_portfolio.pop(k)
         if post_portfolio:
             total_v = sum([i for i in post_portfolio.values()])
-            if total_v > 1:
+            if total_v > 1.01:
                 adj_post_portfolio = {t: post_portfolio[t] / total_v for t in post_portfolio}
             else:
                 adj_post_portfolio = post_portfolio
                 adj_post_portfolio['cash'] = 1 - total_v
+            if ('cash' in adj_post_portfolio):
+                print(369)
+                return port_
+                # ???
+
+
+
             portfolio_record[post_date_] = {'title': port_[0], 'link': port_link, 'portfolio': adj_post_portfolio}
+            # before 20181231, no "POSITION SIZE" --> not the priority
+            # mapping full name --> symbol
+            # https: // en.wikipedia.org / wiki / List_of_S % 26P_500_companies
+            '''
+            20220221 22:30 note:
+            少數還是有bbb的情形，但大都快ok了
+            接下來可以先進historical price的部分
+            '''
 
         else:
             print('No message found:', port_[0])
@@ -344,9 +399,6 @@ def extract_portfolio_info_main(res=None, url_head=''):
 def main(investor, url_head, first_page_tail='', article_keywords='', board_name=''):
     resu = get_portfolio_article_url_main(investor, url_head, first_page_tail, article_keywords, board_name)
     portfolio_record_ = extract_portfolio_info_main(resu, url_head)
-    ######################
-    # Backtest part in progress
-    return portfolio_record_
 
 
 ########################################
