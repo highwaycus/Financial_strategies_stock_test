@@ -5,7 +5,7 @@ The  repository includes some experiemnts toward stock tradings.
 The documents show how I transform some ideas into algorithmic projects and applying on real-world tradings.
 
 #### Idea
-&emsp;**Document:**
+&emsp;**Document:** 
 
 &emsp;&emsp;1. *TW_stock_attack_method.py*
 
