@@ -1,18 +1,25 @@
-### python_stock_test 
- 
-The  repository includes some experiemnts toward stock tradings.
+# Stock Strategy Experiments
 
-The documents show how I transform some ideas into algorithmic projects and applying on real-world tradings.
+This repository turns two stock-trading ideas into Python experiments that can be tested with market data. One looks for a moving-average alignment signal, while the other tests the delayed result of following a reference portfolio.
 
-#### Idea
-&emsp;**Document:** 
+## What I wanted to test
 
-&emsp;&emsp;1. *TW_stock_attack_method.py*
+A trading idea usually sounds simple until every condition has to be written down. I use this repository to turn those ideas into rules that can be backtested before I consider using them in real trading.
 
-&emsp;&emsp;&emsp;&emsp;- Right-Angle Attack Method:
+## Experiments
 
-&emsp;&emsp;&emsp;&emsp;- When all the rolling-window mean price lines are going up and rank in order (ex: 3-days-mean price > 5-days-mean price), it is a signal to buy the stock.
+### 1. Right-Angle Attack Method
 
-&emsp;&emsp;2. *tracking_master_strategy.py*
+**File:** `TW_stock_attack_method.py`
 
-&emsp;&emsp;&emsp;&emsp;- Track a Master's portfolio strategy. This will be a DELAY strategy, so first we have to do backtest on it to see the return of this delay-investment strategy.
+The signal appears when all rolling-average price lines are rising and ordered from short to long windows—for example, the 3-day average is above the 5-day average.
+
+### 2. Delayed portfolio-following strategy
+
+**File:** `tracking_master_strategy.py`
+
+This experiment follows the changes in a reference portfolio. Because those changes are only visible after a delay, the first question is whether the delayed version still produces a useful return in backtesting.
+
+## Status
+
+These are strategy experiments, not a production trading system. The repository is mainly a record of how I translate an investment idea into code and testable conditions.
